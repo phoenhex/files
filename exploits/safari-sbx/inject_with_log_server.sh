@@ -1,0 +1,19 @@
+#!/bin/bash
+if [[ $# != 2 ]]; then
+	echo >&2 "Usage: $0 PID DYLIB"
+	exit 1
+fi
+
+PID="$1"
+DYLIB="$2"
+
+set -m
+python2 log_server.py &
+err=0
+sleep 1
+sudo ./injector $PID $DYLIB || err=1
+if [[ $err != 0 ]]; then
+	kill -9 %1
+	exit 1
+fi
+fg %1

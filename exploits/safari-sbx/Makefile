@@ -1,0 +1,62 @@
+#LIBPATH = /System/Library/
+LIBPATH = `python -c 'import os; print(os.confstr(65538))'`/com.apple.WebKit.WebContent+com.apple.Safari/
+TARGET1 = `python -c 'import os; print(os.confstr(65538))'`/com.apple.WebKit.WebContent+com.apple.Safari/com.apple.speech.speechsynthesisd
+TARGET2 = `python -c 'import os; print(os.confstr(65538))'`/com.apple.speech.speechsynthesisd
+
+.PHONY: all inject inject_test restart_ssd reset clean
+all: injector webcontent.dylib
+
+# Commands
+inject: injector webcontent.dylib
+	@[ ! -e /cores/log_webcontent_* ] || \
+	  	(echo /cores/log_webcontent_XXX exists. you should run make reset first; exit 1)
+	sudo cp webcontent.dylib $(LIBPATH)/webcontent.dylib
+	sudo chmod 755 $(LIBPATH)/webcontent.dylib
+	./inject_with_log_server.sh `pgrep WebContent | tail -n 1` $(LIBPATH)/webcontent.dylib
+
+inject_test: injector test.dylib
+	sudo cp test.dylib $(LIBPATH)/test.dylib
+	sudo chmod 755 $(LIBPATH)/test.dylib
+	./inject_with_log_server.sh `pgrep WebContent | tail -n 1` $(LIBPATH)/test.dylib
+
+restart_ssd:
+	killall -9 com.apple.speech.speechsynthesisd || true
+	swift restart_ssd.swift
+	pgrep speechsynthesisd
+
+reset: restart_ssd
+	sudo umount -f /dev/disk0s1 || true
+	mkdir -p /tmp/mnt
+	diskutil mount -mountPoint /tmp/mnt /dev/disk0s1
+	rm -f /tmp/mnt/root
+	diskutil umount /dev/disk0s1
+	#rm -rf $(TARGET1)
+	#rm -rf $(TARGET2)
+	rm -rf /cores/log_{webcontent,ssd1,ssd2}_*
+	for p in `pgrep WebContent`; do kill -9 $$p; done || true
+
+# Build products
+injector: injector.c
+	clang -o $@ $<
+
+bundle/%.plist.gen.h: bundle/%.plist
+	xxd -i $< $@
+
+%.dylib.gen.h: %.dylib
+	xxd -i $< $@
+
+test.dylib: test.c
+	clang -shared $< -o $@ -framework CoreFoundation -framework Security
+
+webcontent.dylib: webcontent.c bundle/Info.plist.gen.h bundle/version.plist.gen.h \
+  			ssd1.dylib.gen.h ssd2.dylib.gen.h common.h
+	clang -shared $< DAServerUser.c -o $@ -framework CoreFoundation -framework Security
+
+ssd1.dylib: ssd1.c common.h
+	clang -shared $< -o $@ -framework Security -framework CoreFoundation
+
+ssd2.dylib: ssd2.c common.h
+	clang -shared $< -o $@ -framework Security -framework CoreFoundation
+
+clean:
+	rm -f *.dylib *.o injector
